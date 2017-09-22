@@ -32,7 +32,7 @@ add_library ( ${PROJECT_NAME} SHARED
         
 target_link_libraries ( ${PROJECT_NAME} PRIVATE
         wilton_core
-        ${${PROJECT_NAME}_DEPS_PC_STATIC_LIBRARIES} )
+        ${${PROJECT_NAME}_DEPS_PC_LIBRARIES} )
 
 target_include_directories ( ${PROJECT_NAME} BEFORE PRIVATE 
         ${CMAKE_CURRENT_LIST_DIR}/src
@@ -43,6 +43,7 @@ target_include_directories ( ${PROJECT_NAME} BEFORE PRIVATE
 target_compile_options ( ${PROJECT_NAME} PRIVATE ${${PROJECT_NAME}_DEPS_PC_CFLAGS_OTHER} )
 
 if ( ${CMAKE_SYSTEM_NAME} STREQUAL "Windows" )
+    target_link_libraries ( ${PROJECT_NAME} PRIVATE wtsapi32 )
     set_property ( TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS "/manifest:no" )
 endif ( )
 
