@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "staticlib/io.hpp"
+#include "staticlib/json.hpp"
 #include "staticlib/ranges.hpp"
 #include "staticlib/support.hpp"
 #include "staticlib/utils.hpp"
@@ -151,6 +152,41 @@ support::buffer read_file(sl::io::span<const char> data) {
         auto sink = sl::io::string_sink();
         sl::io::copy_all(src, sink);
         return support::make_string_buffer(sink.get_string());
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+support::buffer read_lines(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rpath = std::ref(sl::utils::empty_string());
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("path" == name) {
+            rpath = fi.as_string_nonempty_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rpath.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'path' not specified"));
+    const std::string& path = rpath.get();
+    // call 
+    try {
+        auto vec = std::vector<sl::json::value>();
+        auto src = sl::io::make_buffered_source(sl::tinydir::file_source(path));
+        for (;;) {
+            auto line = src.read_line();
+            if (line.empty()) break;
+            if ('\r' == line.back()) {
+                line.pop_back();
+            }
+            if (line.empty()) break;
+            vec.emplace_back(std::move(line));
+        }
+        auto res = sl::json::value(std::move(vec));
+        return support::make_json_buffer(res);
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -346,6 +382,7 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_mkdir", wilton::fs::mkdir);
         wilton::support::register_wiltoncall("fs_readdir", wilton::fs::readdir);
         wilton::support::register_wiltoncall("fs_read_file", wilton::fs::read_file);
+        wilton::support::register_wiltoncall("fs_read_lines", wilton::fs::read_lines);
         wilton::support::register_wiltoncall("fs_rename", wilton::fs::rename);
         wilton::support::register_wiltoncall("fs_rmdir", wilton::fs::rmdir);
         wilton::support::register_wiltoncall("fs_stat", wilton::fs::stat);
