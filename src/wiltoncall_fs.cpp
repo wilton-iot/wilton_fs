@@ -192,6 +192,30 @@ support::buffer read_lines(sl::io::span<const char> data) {
     }
 }
 
+support::buffer realpath(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rpath = std::ref(sl::utils::empty_string());
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("path" == name) {
+            rpath = fi.as_string_nonempty_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rpath.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'path' not specified"));
+    const std::string& path = rpath.get();
+    // call 
+    try {
+        auto abs = sl::tinydir::full_path(path);
+        return support::make_string_buffer(abs);
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
 support::buffer rename(sl::io::span<const char> data) {
     // json parse
     auto json = sl::json::load(data);
@@ -383,6 +407,7 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_readdir", wilton::fs::readdir);
         wilton::support::register_wiltoncall("fs_read_file", wilton::fs::read_file);
         wilton::support::register_wiltoncall("fs_read_lines", wilton::fs::read_lines);
+        wilton::support::register_wiltoncall("fs_realpath", wilton::fs::realpath);
         wilton::support::register_wiltoncall("fs_rename", wilton::fs::rename);
         wilton::support::register_wiltoncall("fs_rmdir", wilton::fs::rmdir);
         wilton::support::register_wiltoncall("fs_stat", wilton::fs::stat);
