@@ -75,7 +75,7 @@ support::buffer exists(sl::io::span<const char> data) {
         return support::make_json_buffer({
             { "exists", tpath.exists() }
         });
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return support::make_json_buffer({
             { "exists", false }
         });
