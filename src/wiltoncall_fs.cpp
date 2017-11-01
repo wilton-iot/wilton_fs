@@ -297,7 +297,7 @@ support::buffer stat(sl::io::span<const char> data) {
     try {
         auto tpath = sl::tinydir::path(path);
         return support::make_json_buffer({
-            { "size", tpath.is_regular_file() ? tpath.open_read().size() : 0 },
+            { "size", tpath.is_regular_file() ? static_cast<int64_t>(tpath.open_read().size()) : 0 },
             { "isFile", tpath.is_regular_file() },
             { "isDirectory", tpath.is_directory() }
         });
