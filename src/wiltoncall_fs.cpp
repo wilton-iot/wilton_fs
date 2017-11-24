@@ -27,12 +27,15 @@ support::buffer append_file(sl::io::span<const char> data) {
     auto json = sl::json::load(data);
     auto rpath = std::ref(sl::utils::empty_string());
     auto rcontents = std::ref(sl::utils::empty_string());
+    auto hex = false;
     for (const sl::json::field& fi : json.as_object()) {
         auto& name = fi.name();
         if ("path" == name) {
             rpath = fi.as_string_nonempty_or_throw(name);
         } else if ("data" == name) {
             rcontents = fi.as_string_or_throw(name);
+        } else if ("hex" == name) {
+            hex = fi.as_bool_or_throw(name);
         } else {
             throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
         }
@@ -47,7 +50,12 @@ support::buffer append_file(sl::io::span<const char> data) {
     try {
         auto src = sl::io::string_source(contents);
         auto sink = sl::tinydir::file_sink(path, sl::tinydir::file_sink::open_mode::append);
-        sl::io::copy_all(src, sink);
+        if (hex) {
+            auto bufsink = sl::io::make_buffered_sink(sink);
+            sl::io::copy_from_hex(src, bufsink);
+        } else {
+            sl::io::copy_all(src, sink);
+        }
         return support::make_empty_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
@@ -137,10 +145,13 @@ support::buffer read_file(sl::io::span<const char> data) {
     // json parse
     auto json = sl::json::load(data);
     auto rpath = std::ref(sl::utils::empty_string());
+    auto hex = false;
     for (const sl::json::field& fi : json.as_object()) {
         auto& name = fi.name();
         if ("path" == name) {
             rpath = fi.as_string_nonempty_or_throw(name);
+        } else if ("hex" == name) {
+            hex = fi.as_bool_or_throw(name);
         } else {
             throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
         }
@@ -151,9 +162,12 @@ support::buffer read_file(sl::io::span<const char> data) {
     // call 
     try {
         auto src = sl::tinydir::file_source(path);
-        auto sink = sl::io::string_sink();
-        sl::io::copy_all(src, sink);
-        return support::make_string_buffer(sink.get_string());
+        if (hex) {
+            auto bufsrc = sl::io::make_buffered_source(src);
+            return support::make_hex_buffer(bufsrc);
+        } else {
+            return support::make_source_buffer(src);
+        }
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -340,12 +354,15 @@ support::buffer write_file(sl::io::span<const char> data) {
     auto json = sl::json::load(data);
     auto rpath = std::ref(sl::utils::empty_string());
     auto rcontents = std::ref(sl::utils::empty_string());
+    auto hex = false;
     for (const sl::json::field& fi : json.as_object()) {
         auto& name = fi.name();
         if ("path" == name) {
             rpath = fi.as_string_nonempty_or_throw(name);
         } else if ("data" == name) {
             rcontents = fi.as_string_or_throw(name);            
+        } else if ("hex" == name) {
+            hex = fi.as_bool_or_throw(name);
         } else {
             throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
         }
@@ -360,7 +377,12 @@ support::buffer write_file(sl::io::span<const char> data) {
     try {
         auto src = sl::io::string_source(contents);
         auto sink = sl::tinydir::file_sink(path);
-        sl::io::copy_all(src, sink);
+        if (hex) {
+            auto bufsink = sl::io::make_buffered_sink(sink);
+            sl::io::copy_from_hex(src, bufsink);
+        } else {
+            sl::io::copy_all(src, sink);
+        }
         return support::make_empty_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
