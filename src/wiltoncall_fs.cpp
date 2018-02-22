@@ -72,7 +72,7 @@ support::buffer append_file(sl::io::span<const char> data) {
         } else {
             sl::io::copy_all(src, sink);
         }
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -124,7 +124,7 @@ support::buffer mkdir(sl::io::span<const char> data) {
     // call 
     try {
         sl::tinydir::create_directory(path);
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -273,7 +273,7 @@ support::buffer rename(sl::io::span<const char> data) {
     try {
         auto old = sl::tinydir::path(oldpath);
         old.rename(newpath);
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -302,7 +302,7 @@ support::buffer rmdir(sl::io::span<const char> data) {
         } else {
             throw support::exception(TRACEMSG("Invalid directory path: [" + path + "]"));
         }
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -359,7 +359,7 @@ support::buffer unlink(sl::io::span<const char> data) {
         } else {
             throw support::exception(TRACEMSG("Invalid file path: [" + path + "]"));
         }
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -399,7 +399,7 @@ support::buffer write_file(sl::io::span<const char> data) {
         } else {
             sl::io::copy_all(src, sink);
         }
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
@@ -430,7 +430,7 @@ support::buffer copy_file(sl::io::span<const char> data) {
     try {
         auto old = sl::tinydir::path(oldpath);
         old.copy_file(newpath);
-        return support::make_empty_buffer();
+        return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
     }
