@@ -22,6 +22,7 @@
  */
 
 #include <functional>
+#include <memory>
 #include <vector>
 
 #include "staticlib/io.hpp"
@@ -33,50 +34,46 @@
 
 #include "wilton/support/buffer.hpp"
 #include "wilton/support/exception.hpp"
+#include "wilton/support/logging.hpp"
 #include "wilton/support/registrar.hpp"
+#include "wilton/support/tl_registry.hpp"
 
 namespace wilton {
 namespace fs {
 
-support::buffer append_file(sl::io::span<const char> data) {
-    // json parse
-    auto json = sl::json::load(data);
-    auto rpath = std::ref(sl::utils::empty_string());
-    auto rcontents = std::ref(sl::utils::empty_string());
-    auto hex = false;
-    for (const sl::json::field& fi : json.as_object()) {
-        auto& name = fi.name();
-        if ("path" == name) {
-            rpath = fi.as_string_nonempty_or_throw(name);
-        } else if ("data" == name) {
-            rcontents = fi.as_string_or_throw(name);
-        } else if ("hex" == name) {
-            hex = fi.as_bool_or_throw(name);
-        } else {
-            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
-        }
+namespace { //anonymous
+
+const std::string logger = std::string("wilton.fs");
+
+class file_writer {
+    sl::io::buffered_sink<sl::tinydir::file_sink> sink;
+    bool hex;
+
+public:
+    file_writer(sl::io::buffered_sink<sl::tinydir::file_sink>&& fsink, bool use_hex) :
+    sink(std::move(fsink)),
+    hex(use_hex) { }
+
+    sl::io::buffered_sink<sl::tinydir::file_sink>& get_sink() {
+        return sink;
     }
-    if (rpath.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'path' not specified"));
-    if (rcontents.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'data' not specified"));
-    const std::string& path = rpath.get();
-    const std::string& contents = rcontents.get();
-    // call 
-    try {
-        auto src = sl::io::string_source(contents);
-        auto sink = sl::tinydir::file_sink(path, sl::tinydir::file_sink::open_mode::append);
-        if (hex) {
-            auto bufsink = sl::io::make_buffered_sink(sink);
-            sl::io::copy_from_hex(src, bufsink);
-        } else {
-            sl::io::copy_all(src, sink);
-        }
-        return support::make_null_buffer();
-    } catch (const std::exception& e) {
-        throw support::exception(TRACEMSG(e.what()));
+
+    const std::string& path() {
+        return sink.get_sink().path();
     }
+
+    bool is_hex() {
+        return hex;
+    }
+};
+
+// initialized from wilton_module_init
+std::shared_ptr<support::tl_registry<file_writer>> local_registry() {
+    static auto registry = std::make_shared<support::tl_registry<file_writer>>();
+    return registry;
 }
+
+} // namespace
 
 support::buffer exists(sl::io::span<const char> data) {
     // json parse
@@ -365,46 +362,6 @@ support::buffer unlink(sl::io::span<const char> data) {
     }
 }
 
-support::buffer write_file(sl::io::span<const char> data) {
-    // json parse
-    auto json = sl::json::load(data);
-    auto rpath = std::ref(sl::utils::empty_string());
-    auto rcontents = std::ref(sl::utils::empty_string());
-    auto hex = false;
-    for (const sl::json::field& fi : json.as_object()) {
-        auto& name = fi.name();
-        if ("path" == name) {
-            rpath = fi.as_string_nonempty_or_throw(name);
-        } else if ("data" == name) {
-            rcontents = fi.as_string_or_throw(name);            
-        } else if ("hex" == name) {
-            hex = fi.as_bool_or_throw(name);
-        } else {
-            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
-        }
-    }
-    if (rpath.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'path' not specified"));
-    if (rcontents.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'data' not specified"));    
-    const std::string& path = rpath.get();
-    const std::string& contents = rcontents.get();
-    // call 
-    try {
-        auto src = sl::io::string_source(contents);
-        auto sink = sl::tinydir::file_sink(path);
-        if (hex) {
-            auto bufsink = sl::io::make_buffered_sink(sink);
-            sl::io::copy_from_hex(src, bufsink);
-        } else {
-            sl::io::copy_all(src, sink);
-        }
-        return support::make_null_buffer();
-    } catch (const std::exception& e) {
-        throw support::exception(TRACEMSG(e.what()));
-    }
-}
-
 support::buffer copy_file(sl::io::span<const char> data) {
     // json parse
     auto json = sl::json::load(data);
@@ -436,12 +393,79 @@ support::buffer copy_file(sl::io::span<const char> data) {
     }
 }
 
+support::buffer open_tl_file_writer(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rpath = std::ref(sl::utils::empty_string());
+    auto hex = false;
+    auto append = false;
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("path" == name) {
+            rpath = fi.as_string_nonempty_or_throw(name);
+        } else if ("hex" == name) {
+            hex = fi.as_bool_or_throw(name);
+        } else if ("append" == name) {
+            append = fi.as_bool_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rpath.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'path' not specified"));
+    const std::string& path = rpath.get();
+    // create writer
+    try {
+        auto reg = local_registry();
+        auto mode = append ? sl::tinydir::file_sink::open_mode::append :
+                sl::tinydir::file_sink::open_mode::create;
+        auto fsink = sl::tinydir::file_sink(path, mode);
+        auto sink = sl::io::make_buffered_sink(std::move(fsink));
+        auto writer = file_writer(std::move(sink), hex);
+        reg->put(std::move(writer));
+        wilton::support::log_debug(logger, std::string("TL file writer opened,") + 
+                " path: [" + path + "], append: [" + (append ? "true" : "false") + "]");
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+support::buffer append_tl_file_writer(sl::io::span<const char> data) {
+    auto reg = local_registry();
+    auto& writer = reg->peek();
+    auto src = sl::io::array_source(data.data(), data.size());
+    auto& sink = writer.get_sink();
+    size_t written = 0;
+    if (writer.is_hex()) {
+        written = sl::io::copy_from_hex(src, sink);
+    } else {
+        written = sl::io::copy_all(src, sink);
+    }
+    wilton::support::log_debug(logger, std::string("TL file writer appended,") + 
+            " path: [" + writer.path() + "]," +
+            " bytes: [" + sl::support::to_string(written) + "]");
+    return support::make_null_buffer();
+}
+
+support::buffer close_tl_file_writer(sl::io::span<const char>) {
+    auto reg = local_registry();
+    {
+        // will be destroyed at the end of scope
+        // no reinsertion logic on unlikely error
+        auto writer = reg->remove();
+        wilton::support::log_debug(logger, std::string("TL file writer closed,") +
+                " path: [" + writer.path() + "]");
+    }
+    return support::make_null_buffer();
+}
+
 } // namespace
 }
 
 extern "C" char* wilton_module_init() {
     try {
-        wilton::support::register_wiltoncall("fs_append_file", wilton::fs::append_file);
+        wilton::fs::local_registry();
         wilton::support::register_wiltoncall("fs_exists", wilton::fs::exists);
         wilton::support::register_wiltoncall("fs_mkdir", wilton::fs::mkdir);
         wilton::support::register_wiltoncall("fs_readdir", wilton::fs::readdir);
@@ -452,8 +476,10 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_rmdir", wilton::fs::rmdir);
         wilton::support::register_wiltoncall("fs_stat", wilton::fs::stat);
         wilton::support::register_wiltoncall("fs_unlink", wilton::fs::unlink);
-        wilton::support::register_wiltoncall("fs_write_file", wilton::fs::write_file);
         wilton::support::register_wiltoncall("fs_copy_file", wilton::fs::copy_file);
+        wilton::support::register_wiltoncall("fs_open_tl_file_writer", wilton::fs::open_tl_file_writer);
+        wilton::support::register_wiltoncall("fs_append_tl_file_writer", wilton::fs::append_tl_file_writer);
+        wilton::support::register_wiltoncall("fs_close_tl_file_writer", wilton::fs::close_tl_file_writer);
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));
