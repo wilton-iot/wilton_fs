@@ -53,6 +53,16 @@ public:
     file_writer(sl::io::buffered_sink<sl::tinydir::file_sink>&& fsink, bool use_hex) :
     sink(std::move(fsink)),
     hex(use_hex) { }
+    
+    file_writer(const file_writer&) = delete;
+    
+    file_writer& operator=(const file_writer&) = delete;
+    
+    file_writer(file_writer&& other) :
+    sink(std::move(other.sink)),
+    hex(other.hex) {
+        other.hex = false;
+    }
 
     sl::io::buffered_sink<sl::tinydir::file_sink>& get_sink() {
         return sink;
