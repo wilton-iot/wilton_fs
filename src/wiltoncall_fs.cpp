@@ -448,7 +448,8 @@ support::buffer append_tl_file_writer(sl::io::span<const char> data) {
     auto& sink = writer.get_sink();
     size_t written = 0;
     if (writer.is_hex()) {
-        written = sl::io::copy_from_hex(src, sink);
+        auto unhexer = sl::io::make_hex_source(src);
+        written = sl::io::copy_all(unhexer, sink);
     } else {
         written = sl::io::copy_all(src, sink);
     }
