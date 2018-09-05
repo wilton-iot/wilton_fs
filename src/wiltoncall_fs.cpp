@@ -471,6 +471,36 @@ support::buffer close_tl_file_writer(sl::io::span<const char>) {
     return support::make_null_buffer();
 }
 
+support::buffer symlink(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rdest = std::ref(sl::utils::empty_string());
+    auto rlink = std::ref(sl::utils::empty_string());
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("dest" == name) {
+            rdest = fi.as_string_nonempty_or_throw(name);
+        } else if ("link" == name) {
+            rlink = fi.as_string_nonempty_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rdest.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'dest' not specified"));
+    if (rlink.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'link' not specified"));    
+    const std::string& dest = rdest.get();
+    const std::string& link = rlink.get();
+    // call 
+    try {
+        sl::tinydir::create_symlink(dest, link);
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
 } // namespace
 }
 
@@ -491,6 +521,7 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_open_tl_file_writer", wilton::fs::open_tl_file_writer);
         wilton::support::register_wiltoncall("fs_append_tl_file_writer", wilton::fs::append_tl_file_writer);
         wilton::support::register_wiltoncall("fs_close_tl_file_writer", wilton::fs::close_tl_file_writer);
+        wilton::support::register_wiltoncall("fs_symlink", wilton::fs::symlink);
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));
