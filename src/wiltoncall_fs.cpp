@@ -25,6 +25,12 @@
 #include <memory>
 #include <vector>
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <sys/types.h>
+
 #include "staticlib/io.hpp"
 #include "staticlib/json.hpp"
 #include "staticlib/ranges.hpp"
@@ -501,12 +507,124 @@ support::buffer symlink(sl::io::span<const char> data) {
     }
 }
 
+support::buffer insert_file(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rsource_path = std::ref(sl::utils::empty_string());
+    auto rdest_path = std::ref(sl::utils::empty_string());
+    uint64_t part_number = 0;
+    uint64_t part_size = 0;
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("source_path" == name) {
+            rsource_path = fi.as_string_nonempty_or_throw(name);
+        } else if ("dest_path" == name) {
+            rdest_path = fi.as_string_nonempty_or_throw(name);
+        } else if ("part_number" == name) {
+            part_number = fi.as_int64_or_throw(name);
+        } else if ("part_size" == name) {
+            part_size = fi.as_int64_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rsource_path.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'in' not specified"));
+    if (rdest_path.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'out' not specified"));
+
+    const std::string& source_path = rsource_path.get();
+    const std::string& dest_path = rdest_path.get();
+
+    // call
+    try {
+        int source = ::open(source_path.c_str(), O_RDONLY, 0);
+        if (-1 == source) throw sl::tinydir::tinydir_exception(TRACEMSG("Error opening src file: [" + source_path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+        auto deferred_src = sl::support::defer([source]() STATICLIB_NOEXCEPT {
+            ::close(source);
+        });
+        struct stat stat_source;
+        auto err_stat = ::fstat(source, std::addressof(stat_source));
+        if (-1 == err_stat) throw sl::tinydir::tinydir_exception(TRACEMSG("Error obtaining file status: [" + source_path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+
+        int dest = ::open(dest_path.c_str(), O_RDWR | O_CREAT /*| O_TRUNC*/ /*| O_APPEND*/, stat_source.st_mode);
+        if (-1 == dest) throw sl::tinydir::tinydir_exception(TRACEMSG("Error opening dest file: [" + dest_path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+        auto deferred_dest = sl::support::defer([dest]() STATICLIB_NOEXCEPT {
+            ::close(dest);
+        });
+        struct stat dest_source;
+        err_stat = ::fstat(dest, std::addressof(dest_source));
+        if (-1 == err_stat) throw support::exception(TRACEMSG("Error obtaining file status: [" + dest_path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+
+        off_t offset = part_size*part_number;
+        // check is file can revcieve that amount??
+        if ((offset + stat_source.st_size) > dest_source.st_size) {
+            // TODO error capacity error ?
+        }
+
+//
+        lseek(dest, offset*sizeof(char), SEEK_SET);
+        auto err_sf = ::sendfile(dest, source, NULL, stat_source.st_size);
+        if (-1 == err_sf /*|| -1 == err_sp*/) throw support::exception(TRACEMSG("Error copying file: [" + source_path + "]," +
+                " target: [" + dest_path + "]" +
+                " error: [" + ::strerror(errno) + "]"));
+
+        struct stat new_file_stat_source;
+        err_stat = ::fstat(dest, std::addressof(new_file_stat_source));
+        if (-1 == err_stat) throw support::exception(TRACEMSG("Error obtaining file status: [" + dest_path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+support::buffer resize_file(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rpath = std::ref(sl::utils::empty_string());
+    size_t new_size = 0;
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("path" == name) {
+            rpath = fi.as_string_nonempty_or_throw(name);
+        } else if ("size" == name) {
+            new_size = fi.as_int64_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rpath.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'path' not specified"));
+    const std::string& path = rpath.get();
+    // call
+    try {
+        int dest = ::open(path.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (-1 == dest) throw support::exception(TRACEMSG("Error opening src file: [" + path + "]," +
+                " error: [" + ::strerror(errno) + "]"));
+        auto deferred_src = sl::support::defer([dest]() STATICLIB_NOEXCEPT {
+            ::close(dest);
+        });
+        ftruncate(dest, new_size);
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+
 } // namespace
 }
 
 extern "C" char* wilton_module_init() {
     try {
         wilton::fs::local_registry();
+
         wilton::support::register_wiltoncall("fs_exists", wilton::fs::exists);
         wilton::support::register_wiltoncall("fs_mkdir", wilton::fs::mkdir);
         wilton::support::register_wiltoncall("fs_readdir", wilton::fs::readdir);
@@ -522,6 +640,8 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_append_tl_file_writer", wilton::fs::append_tl_file_writer);
         wilton::support::register_wiltoncall("fs_close_tl_file_writer", wilton::fs::close_tl_file_writer);
         wilton::support::register_wiltoncall("fs_symlink", wilton::fs::symlink);
+        wilton::support::register_wiltoncall("fs_insert_file", wilton::fs::insert_file);
+        wilton::support::register_wiltoncall("fs_resize_file", wilton::fs::resize_file);
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));
