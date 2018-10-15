@@ -538,46 +538,9 @@ support::buffer insert_file(sl::io::span<const char> data) {
 
     // call
     try {
-        int source = ::open(source_path.c_str(), O_RDONLY, 0);
-        if (-1 == source) throw sl::tinydir::tinydir_exception(TRACEMSG("Error opening src file: [" + source_path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-        auto deferred_src = sl::support::defer([source]() STATICLIB_NOEXCEPT {
-            ::close(source);
-        });
-        struct stat stat_source;
-        auto err_stat = ::fstat(source, std::addressof(stat_source));
-        if (-1 == err_stat) throw sl::tinydir::tinydir_exception(TRACEMSG("Error obtaining file status: [" + source_path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-
-        int dest = ::open(dest_path.c_str(), O_RDWR | O_CREAT /*| O_TRUNC*/ /*| O_APPEND*/, stat_source.st_mode);
-        if (-1 == dest) throw sl::tinydir::tinydir_exception(TRACEMSG("Error opening dest file: [" + dest_path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-        auto deferred_dest = sl::support::defer([dest]() STATICLIB_NOEXCEPT {
-            ::close(dest);
-        });
-        struct stat dest_source;
-        err_stat = ::fstat(dest, std::addressof(dest_source));
-        if (-1 == err_stat) throw support::exception(TRACEMSG("Error obtaining file status: [" + dest_path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-
-        off_t offset = part_size*part_number;
-        // check is file can revcieve that amount??
-        if ((offset + stat_source.st_size) > dest_source.st_size) {
-            // TODO error capacity error ?
-        }
-
-//
-        lseek(dest, offset*sizeof(char), SEEK_SET);
-        auto err_sf = ::sendfile(dest, source, NULL, stat_source.st_size);
-        if (-1 == err_sf /*|| -1 == err_sp*/) throw support::exception(TRACEMSG("Error copying file: [" + source_path + "]," +
-                " target: [" + dest_path + "]" +
-                " error: [" + ::strerror(errno) + "]"));
-
-        struct stat new_file_stat_source;
-        err_stat = ::fstat(dest, std::addressof(new_file_stat_source));
-        if (-1 == err_stat) throw support::exception(TRACEMSG("Error obtaining file status: [" + dest_path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-
+        auto dest = sl::tinydir::path(dest_path).open_insert();
+        auto offset = part_size*part_number*sizeof(char);
+        dest.write_from_file(source_path, offset);
         return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
@@ -604,13 +567,9 @@ support::buffer resize_file(sl::io::span<const char> data) {
     const std::string& path = rpath.get();
     // call
     try {
-        int dest = ::open(path.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-        if (-1 == dest) throw support::exception(TRACEMSG("Error opening src file: [" + path + "]," +
-                " error: [" + ::strerror(errno) + "]"));
-        auto deferred_src = sl::support::defer([dest]() STATICLIB_NOEXCEPT {
-            ::close(dest);
-        });
-        ftruncate(dest, new_size);
+        auto tpath = sl::tinydir::path(path);
+        tpath.resize(new_size);
+
         return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
