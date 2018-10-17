@@ -25,12 +25,6 @@
 #include <memory>
 #include <vector>
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/sendfile.h>
-#include <sys/types.h>
-
 #include "staticlib/io.hpp"
 #include "staticlib/json.hpp"
 #include "staticlib/ranges.hpp"
