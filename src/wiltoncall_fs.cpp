@@ -501,12 +501,83 @@ support::buffer symlink(sl::io::span<const char> data) {
     }
 }
 
+support::buffer insert_file(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rsource_path = std::ref(sl::utils::empty_string());
+    auto rdest_path = std::ref(sl::utils::empty_string());
+    uint64_t part_number = 0;
+    uint64_t part_size = 0;
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("source_path" == name) {
+            rsource_path = fi.as_string_nonempty_or_throw(name);
+        } else if ("dest_path" == name) {
+            rdest_path = fi.as_string_nonempty_or_throw(name);
+        } else if ("part_number" == name) {
+            part_number = fi.as_int64_or_throw(name);
+        } else if ("part_size" == name) {
+            part_size = fi.as_int64_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rsource_path.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'in' not specified"));
+    if (rdest_path.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'out' not specified"));
+
+    const std::string& source_path = rsource_path.get();
+    const std::string& dest_path = rdest_path.get();
+
+    // call
+    try {
+        auto dest = sl::tinydir::path(dest_path).open_insert();
+        auto offset = part_size*part_number*sizeof(char);
+        dest.write_from_file(source_path, offset);
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+support::buffer resize_file(sl::io::span<const char> data) {
+    // json parse
+    auto json = sl::json::load(data);
+    auto rpath = std::ref(sl::utils::empty_string());
+    size_t new_size = 0;
+    for (const sl::json::field& fi : json.as_object()) {
+        auto& name = fi.name();
+        if ("path" == name) {
+            rpath = fi.as_string_nonempty_or_throw(name);
+        } else if ("size" == name) {
+            new_size = fi.as_int32_or_throw(name);
+        } else {
+            throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
+        }
+    }
+    if (rpath.get().empty()) throw support::exception(TRACEMSG(
+            "Required parameter 'path' not specified"));
+    const std::string& path = rpath.get();
+    // call
+    try {
+        auto tpath = sl::tinydir::path(path);
+        tpath.resize(new_size);
+
+        return support::make_null_buffer();
+    } catch (const std::exception& e) {
+        throw support::exception(TRACEMSG(e.what()));
+    }
+}
+
+
 } // namespace
 }
 
 extern "C" char* wilton_module_init() {
     try {
         wilton::fs::local_registry();
+
         wilton::support::register_wiltoncall("fs_exists", wilton::fs::exists);
         wilton::support::register_wiltoncall("fs_mkdir", wilton::fs::mkdir);
         wilton::support::register_wiltoncall("fs_readdir", wilton::fs::readdir);
@@ -522,6 +593,8 @@ extern "C" char* wilton_module_init() {
         wilton::support::register_wiltoncall("fs_append_tl_file_writer", wilton::fs::append_tl_file_writer);
         wilton::support::register_wiltoncall("fs_close_tl_file_writer", wilton::fs::close_tl_file_writer);
         wilton::support::register_wiltoncall("fs_symlink", wilton::fs::symlink);
+        wilton::support::register_wiltoncall("fs_insert_file", wilton::fs::insert_file);
+        wilton::support::register_wiltoncall("fs_resize_file", wilton::fs::resize_file);
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));
