@@ -551,7 +551,7 @@ support::buffer resize_file(sl::io::span<const char> data) {
         if ("path" == name) {
             rpath = fi.as_string_nonempty_or_throw(name);
         } else if ("size" == name) {
-            new_size = fi.as_int64_or_throw(name);
+            new_size = fi.as_int32_or_throw(name);
         } else {
             throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
         }
