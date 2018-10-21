@@ -532,9 +532,11 @@ support::buffer insert_file(sl::io::span<const char> data) {
 
     // call
     try {
-        auto dest = sl::tinydir::path(dest_path).open_insert();
-        auto offset = part_size*part_number*sizeof(char);
-        dest.write_from_file(source_path, offset);
+        auto dp = sl::tinydir::path(dest_path);
+        auto dest = dp.open_write(sl::tinydir::file_sink::open_mode::from_file);
+        auto offset = part_size * part_number;
+        dest.seek(offset);
+        dest.write_from_file(source_path);
         return support::make_null_buffer();
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
