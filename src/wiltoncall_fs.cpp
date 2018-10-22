@@ -506,26 +506,23 @@ support::buffer insert_file(sl::io::span<const char> data) {
     auto json = sl::json::load(data);
     auto rsource_path = std::ref(sl::utils::empty_string());
     auto rdest_path = std::ref(sl::utils::empty_string());
-    uint64_t part_number = 0;
-    uint64_t part_size = 0;
+    int32_t offset = 0;
     for (const sl::json::field& fi : json.as_object()) {
         auto& name = fi.name();
-        if ("source_path" == name) {
+        if ("sourcePath" == name) {
             rsource_path = fi.as_string_nonempty_or_throw(name);
-        } else if ("dest_path" == name) {
+        } else if ("destPath" == name) {
             rdest_path = fi.as_string_nonempty_or_throw(name);
-        } else if ("part_number" == name) {
-            part_number = fi.as_int64_or_throw(name);
-        } else if ("part_size" == name) {
-            part_size = fi.as_int64_or_throw(name);
+        } else if ("offset" == name) {
+            offset = fi.as_int32_or_throw(name);
         } else {
             throw support::exception(TRACEMSG("Unknown data field: [" + name + "]"));
         }
     }
     if (rsource_path.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'in' not specified"));
+            "Required parameter 'sourcePath' not specified"));
     if (rdest_path.get().empty()) throw support::exception(TRACEMSG(
-            "Required parameter 'out' not specified"));
+            "Required parameter 'destPath' not specified"));
 
     const std::string& source_path = rsource_path.get();
     const std::string& dest_path = rdest_path.get();
@@ -534,7 +531,6 @@ support::buffer insert_file(sl::io::span<const char> data) {
     try {
         auto dp = sl::tinydir::path(dest_path);
         auto dest = dp.open_write(sl::tinydir::file_sink::open_mode::from_file);
-        auto offset = part_size * part_number;
         dest.seek(offset);
         dest.write_from_file(source_path);
         return support::make_null_buffer();
