@@ -221,8 +221,9 @@ support::buffer read_lines(sl::io::span<const char> data) {
             if ('\r' == line.back()) {
                 line.pop_back();
             }
-            if (line.empty()) break;
-            vec.emplace_back(std::move(line));
+            if (!line.empty()) { // can be empty only for "^\r\n$" lines
+                vec.emplace_back(std::move(line));
+            }
         }
         auto res = sl::json::value(std::move(vec));
         return support::make_json_buffer(res);
