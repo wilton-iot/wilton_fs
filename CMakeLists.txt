@@ -24,7 +24,8 @@ set ( ${PROJECT_NAME}_DEPS
         staticlib_ranges
         staticlib_utils
         staticlib_json
-        staticlib_tinydir )
+        staticlib_tinydir
+        utf8cpp )
 staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_PC REQUIRED ${PROJECT_NAME}_DEPS )
 
 # library

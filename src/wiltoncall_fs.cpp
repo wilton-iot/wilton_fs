@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+#include "utf8.h"
+
 #include "staticlib/io.hpp"
 #include "staticlib/json.hpp"
 #include "staticlib/ranges.hpp"
@@ -185,11 +187,21 @@ support::buffer read_file(sl::io::span<const char> data) {
     // call 
     try {
         auto src = sl::tinydir::file_source(path);
-        if (hex) {
+        if (!hex) {
+            auto buf = support::make_source_buffer(src);
+            if (utf8::is_valid(buf.begin(), buf.end())) {
+                return buf;
+            } else {
+                auto deferred = sl::support::defer([buf]() STATICLIB_NOEXCEPT {
+                    wilton_free(buf.data());
+                });
+                auto str_utf8 = std::string();
+                utf8::replace_invalid(buf.begin(), buf.end(), std::back_inserter(str_utf8));
+                return support::make_string_buffer(str_utf8);
+            }
+        } else {
             auto bufsrc = sl::io::make_buffered_source(src);
             return support::make_hex_buffer(bufsrc);
-        } else {
-            return support::make_source_buffer(src);
         }
     } catch (const std::exception& e) {
         throw support::exception(TRACEMSG(e.what()));
@@ -222,7 +234,13 @@ support::buffer read_lines(sl::io::span<const char> data) {
                 line.pop_back();
             }
             if (!line.empty()) { // can be empty only for "^\r\n$" lines
-                vec.emplace_back(std::move(line));
+                if (utf8::is_valid(line.begin(), line.end())) {
+                    vec.emplace_back(std::move(line));
+                } else {
+                    auto line_utf8 = std::string();
+                    utf8::replace_invalid(line.begin(), line.end(), std::back_inserter(line_utf8));
+                    vec.emplace_back(std::move(line_utf8));
+                }
             }
         }
         auto res = sl::json::value(std::move(vec));
