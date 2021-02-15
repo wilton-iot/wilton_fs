@@ -17,6 +17,9 @@ cmake_minimum_required ( VERSION 2.8.12 )
 # project
 project ( wilton_fs CXX )
 
+# dependencies
+staticlib_add_subdirectory ( ${STATICLIB_DEPS}/external_utf8cpp )
+
 set ( ${PROJECT_NAME}_DEPS
         staticlib_config
         staticlib_support
